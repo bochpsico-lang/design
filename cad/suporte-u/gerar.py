@@ -219,6 +219,18 @@ for i, r in enumerate(rows):
 
 doc.saveas(f"{OUT}/suporte_desenho.dxf")
 
+# ---------------- DXF para laser (somente contorno de corte, 1:1, origem 0,0) ----------------
+# R12 com LINE/CIRCLE apenas: compativel com qualquer CAM de corte.
+laser = ezdxf.new("R12"); laser.header["$INSUNITS"] = 4  # mm
+laser.layers.add("CORTE", color=7)
+lm = laser.modelspace()
+pts = [(x-PX, y-PY) for x, y in outline]
+for i in range(len(pts)):
+    lm.add_line(pts[i], pts[(i+1) % len(pts)], dxfattribs={"layer": "CORTE"})
+for x in HOLES_X:
+    lm.add_circle((fx(x)-PX, hy-PY), HOLE_D/2, dxfattribs={"layer": "CORTE"})
+laser.saveas(f"{OUT}/suporte_laser.dxf")
+
 # ---------------- PDF / PNG a partir do DXF ----------------
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
