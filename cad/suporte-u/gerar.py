@@ -25,7 +25,7 @@ R_INT = R_EXT - T                # 0.74
 GAP_X0, GAP_X1 = 60.0, 100.0     # abertura na face frontal (40 mm)
 HOLE_D, HOLE_Z = 5.0, 7.5
 HOLES_X = [30.0, 45.0, 115.0, 130.0]
-K = 0.33                         # fator K (ajustar ao ferramental)
+K = 0.40                         # fator K (ajustar ao ferramental)
 
 # ---------------- 3D ----------------
 # Bandeja dobrada: fundo + 4 abas dobradas a 90 graus, cantos abertos (alivio).
@@ -201,7 +201,7 @@ hdim((g0, YT), (g1, YT), YT+7)
 hdim((g1, YT), (fx(115), hy), YT+7)
 hdim((fx(115), hy), (fx(130), hy), YT+7)
 hdim((fx(130), hy), (PX+F+BL, YT), YT+7)
-text(f"PLANIFICACAO - blank {fmt(Lb)} x {fmt(Wb)} | 4 dobras 90° p/ cima | Ri {fmt(R_INT)} | K {K} (ajustar)",
+text(f"PLANIFICACAO - blank {fmt(Lb)} x {fmt(Wb)} | 4 dobras 90° p/ cima | Ri {fmt(R_INT)} | K {fmt(K)}",
      PX+Lb+12, PY+Wb/2+14, 2.6, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
 text(f"Cantos abertos - alivio {fmt(F)} x {fmt(F)}", PX+Lb+12, PY+Wb/2+7, 2.6,
      align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
