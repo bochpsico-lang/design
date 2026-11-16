@@ -29,10 +29,14 @@ K = 0.33                         # fator K (ajustar ao ferramental)
 
 # ---------------- 3D ----------------
 outer = cq.Workplane("XY").center(L/2, W/2).rect(L, W).extrude(H).edges("|Z").fillet(R_EXT)
-inner = cq.Workplane("XY").center(L/2, W/2).rect(L-2*T, W-2*T).extrude(H).edges("|Z").fillet(R_INT)
+# bandeja: fundo de chapa t=2 + paredes; dobras fundo/parede com R externo 2,74 / interno 0,74
+outer = outer.faces("<Z").edges().fillet(R_EXT - 0.01)
+inner = (cq.Workplane("XY").workplane(offset=T).center(L/2, W/2).rect(L-2*T, W-2*T)
+         .extrude(H).edges("|Z").fillet(R_INT).faces("<Z").edges().fillet(R_INT - 0.01))
 part = outer.cut(inner)
-part = part.cut(cq.Workplane("XY").box(GAP_X1-GAP_X0, T+2, H+2, centered=False)
-                .translate((GAP_X0, -1, -1)))
+# abertura de 40 mm so na parede frontal (o fundo continua inteiro)
+part = part.cut(cq.Workplane("XY").box(GAP_X1-GAP_X0, T+1, H, centered=False)
+                .translate((GAP_X0, -1, R_EXT)))
 for x in HOLES_X:
     part = part.cut(cq.Workplane("XZ").center(x, HOLE_Z).circle(HOLE_D/2).extrude(-(T+2)).translate((0, -1, 0)))
 
@@ -147,7 +151,7 @@ hdim((TX+GAP_X0, YF), (TX+GAP_X1, YF), YF+9)
 hdim((TX+GAP_X1, YF), (TX+L, YF), YF+9)
 hdim((TX, TY), (TX+L, TY), TY-10)
 vdim((TX+L, TY), (TX+L, YF), TX+L+10)
-vdim((TX+GAP_X0+20, YF-T), (TX+GAP_X0+20, YF), TX+GAP_X0+20, text="2,00 ±0,30")
+vdim((TX+GAP_X1+12, YF-T), (TX+GAP_X1+12, YF), TX+GAP_X1+12, text="2,00 ±0,30")
 msp.add_radius_dim(center=(TX+R_EXT, YF-R_EXT), radius=R_EXT, angle=135, text="4x R2,74", **DIM).render()
 text("VISTA SUPERIOR", TX+L/2, TY-18, 3.5)
 
@@ -155,48 +159,54 @@ text("VISTA SUPERIOR", TX+L/2, TY-18, 3.5)
 place(iso, 325, 166, center=True)
 text("ISOMETRICA (sem escala)", 325, 116, 3.0)
 
-# --- Planificacao
+# --- Planificacao (blank em cruz: fundo + 4 abas, cantos com alivio)
 ba = math.pi/2*(R_INT + K*T)                 # bend allowance por dobra
-seg_short = W - 2*R_EXT
-seg_long = L - 2*R_EXT
-tab_l = GAP_X0 - R_EXT; tab_r = L - R_EXT - GAP_X1
-segs = [("aba esq.", tab_l), ("dobra", ba), ("lateral", seg_short), ("dobra", ba), ("fundo", seg_long),
-        ("dobra", ba), ("lateral", seg_short), ("dobra", ba), ("aba dir.", tab_r)]
-flat_len = sum(s for _, s in segs)
-PX, PY = 22, 73
-msp.add_lwpolyline([(PX,PY),(PX+flat_len,PY),(PX+flat_len,PY+H),(PX,PY+H)], close=True, dxfattribs={"layer":"VISIVEL"})
-x = PX; bends = []
-for name, sl in segs:
-    if name == "dobra":
-        cx = x + sl/2; bends.append(cx)
-        msp.add_line((cx, PY-2), (cx, PY+H+2), dxfattribs={"layer": "DOBRA"})
-    x += sl
-# furos (abas): aba esq. da ponta x=60 -> furos a 15 e 30; idem aba dir.
-for hx in (GAP_X0-45, GAP_X0-30):
-    msp.add_circle((PX+hx, PY+HOLE_Z), HOLE_D/2, dxfattribs={"layer":"VISIVEL"})
-for hx in (115-GAP_X1, 130-GAP_X1):
-    msp.add_circle((PX+flat_len-hx, PY+HOLE_Z), HOLE_D/2, dxfattribs={"layer":"VISIVEL"})
-hdim((PX, PY), (PX+flat_len, PY), PY-9)
-vdim((PX, PY), (PX, PY+H), PX-7)
-# cotas de linha de dobra, acumuladas a partir da ponta esquerda
-prev = (PX, PY+H)
-hdim((PX, PY+H), (PX+15, PY+HOLE_Z), PY+H+7)
-hdim((PX+15, PY+HOLE_Z), (PX+30, PY+HOLE_Z), PY+H+7)
-hdim((PX+flat_len-30, PY+HOLE_Z), (PX+flat_len-15, PY+HOLE_Z), PY+H+7)
-hdim((PX+flat_len-15, PY+HOLE_Z), (PX+flat_len, PY+H), PY+H+7)
-for b in bends:
-    hdim(prev, (b, PY+H+2), PY+H+15); prev = (b, PY+H+2)
-hdim(prev, (PX+flat_len, PY+H), PY+H+15)
-text(f"PLANIFICACAO  -  blank {fmt(flat_len)} x {fmt(H)} mm  |  4 dobras 90° (mesmo sentido)  |  Ri = {fmt(R_INT)}  |  K = {K} (ajustar)",
-     PX, PY-18, 2.6, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
+F = ba + (H - R_EXT)                         # aba desenvolvida (dobra + trecho reto)
+BL, BW = L - 2*R_EXT, W - 2*R_EXT            # fundo entre tangentes
+Lb, Wb = BL + 2*F, BW + 2*F
+PX, PY = 30, 22
+fx = lambda x: PX + F + (x - R_EXT)          # x da peca -> x do blank
+g0, g1 = fx(GAP_X0), fx(GAP_X1)
+yb = PY + F + BW                             # tangente fundo/aba frontal
+outline = [(PX+F,PY),(PX+F+BL,PY),(PX+F+BL,PY+F),(PX+Lb,PY+F),(PX+Lb,yb),(PX+F+BL,yb),
+           (PX+F+BL,PY+Wb),(g1,PY+Wb),(g1,yb+ba),(g0,yb+ba),(g0,PY+Wb),(PX+F,PY+Wb),
+           (PX+F,yb),(PX,yb),(PX,PY+F),(PX+F,PY+F)]
+msp.add_lwpolyline(outline, close=True, dxfattribs={"layer":"VISIVEL"})
+def bl(p, q): msp.add_line(p, q, dxfattribs={"layer":"DOBRA"})
+bl((PX+F, PY+F-ba/2), (PX+F+BL, PY+F-ba/2))            # fundo (traseira)
+bl((PX+F, yb+ba/2), (g0, yb+ba/2)); bl((g1, yb+ba/2), (PX+F+BL, yb+ba/2))   # frente
+bl((PX+F-ba/2, PY+F), (PX+F-ba/2, yb))                 # lateral esq.
+bl((PX+F+BL+ba/2, PY+F), (PX+F+BL+ba/2, yb))           # lateral dir.
+hy = PY + Wb - HOLE_Z
+for x in HOLES_X:
+    msp.add_circle((fx(x), hy), HOLE_D/2, dxfattribs={"layer":"VISIVEL"})
+    cline((fx(x)-4, hy), (fx(x)+4, hy)); cline((fx(x), hy-4), (fx(x), hy+4))
+YT = PY + Wb
+hdim((PX, PY+F), (PX+Lb, PY+F), PY-8 if PY > 14 else PY-6)
+vdim((PX+Lb, PY+F), (PX+Lb, yb), PX+Lb+7)
+vdim((PX+F, PY), (PX+F, PY+Wb), PX-8)
+vdim((PX+F+BL, PY), (PX+F+BL, PY+F), PX+F+BL+6)
+vdim((PX+F+BL, hy), (PX+F+BL, YT), PX+F+BL+6)
+hdim((PX+F, YT), (fx(30), hy), YT+7)
+hdim((fx(30), hy), (fx(45), hy), YT+7)
+hdim((fx(45), hy), (g0, YT), YT+7)
+hdim((g0, YT), (g1, YT), YT+7)
+hdim((g1, YT), (fx(115), hy), YT+7)
+hdim((fx(115), hy), (fx(130), hy), YT+7)
+hdim((fx(130), hy), (PX+F+BL, YT), YT+7)
+text(f"PLANIFICACAO - blank {fmt(Lb)} x {fmt(Wb)} | 4 dobras 90° p/ cima | Ri {fmt(R_INT)} | K {K} (ajustar)",
+     PX+Lb+12, PY+Wb/2+6, 2.6, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
+text(f"Cantos com alivio {fmt(F)} x {fmt(F)}", PX+Lb+12, PY+Wb/2-1, 2.6,
+     align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
+flat_len = Lb
 # --- Legenda
 BX, BY = 290, 10
 msp.add_lwpolyline([(BX,BY),(410,BY),(410,BY+50),(BX,BY+50)], close=True, dxfattribs={"layer":"MOLDURA"})
 for yy in (BY+10, BY+20, BY+30, BY+40):
     msp.add_line((BX, yy), (410, yy), dxfattribs={"layer":"MOLDURA"})
-rows = ["SUPORTE EM CHAPA - U", "Material: Aco SAE 1020 Galvanizado  t = 2,00 mm",
+rows = ["SUPORTE EM CHAPA - BANDEJA", "Material: Aco SAE 1020 Galvanizado  t = 2,00 mm",
         "Quantidade: 500 pecas", "Escala 1:1   Folha A3   Unid.: mm   1o diedro",
-        "Tol. geral: ISO 2768-m   Raios int. dobra 0,74"]
+        "Tol. ISO 2768-m   Ri dobra 0,74   Massa ~207 g"]
 for i, r in enumerate(rows):
     text(r, BX+3, BY+45-10*i, 4.0 if i == 0 else 2.8, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
 
@@ -216,4 +226,33 @@ Frontend(RenderContext(doc), MatplotlibBackend(ax), config=cfg).draw_layout(msp,
 ax.set_xlim(0, 420); ax.set_ylim(0, 297)
 fig.savefig(f"{OUT}/suporte_desenho.pdf")
 fig.savefig(f"{OUT}/suporte_desenho.png", dpi=150)
-print(f"planificacao: {flat_len:.2f} mm  (BA por dobra {ba:.3f})")
+print(f"blank: {Lb:.2f} x {Wb:.2f} mm  (BA por dobra {ba:.3f})")
+
+# ---------------- FreeCAD (.FCStd) ----------------
+# .FCStd = zip com Document.xml + forma em BREP; abre direto no FreeCAD (Part::Feature).
+import zipfile
+from OCP.BRepTools import BRepTools
+brep = f"{OUT}/_tmp.brp"
+BRepTools.Write_s(part.val().wrapped, brep)
+doc_xml = """<?xml version='1.0' encoding='utf-8'?>
+<Document SchemaVersion="4" ProgramVersion="0.21R" FileVersion="1">
+    <Properties Count="1">
+        <Property name="Label" type="App::PropertyString"><String value="suporte"/></Property>
+    </Properties>
+    <Objects Count="1">
+        <Object type="Part::Feature" name="Suporte" id="1"/>
+    </Objects>
+    <ObjectData Count="1">
+        <Object name="Suporte">
+            <Properties Count="2">
+                <Property name="Label" type="App::PropertyString"><String value="Suporte_chapa_t2"/></Property>
+                <Property name="Shape" type="Part::PropertyPartShape"><Part file="Suporte.Shape.brp"/></Property>
+            </Properties>
+        </Object>
+    </ObjectData>
+</Document>
+"""
+with zipfile.ZipFile(f"{OUT}/suporte.FCStd", "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("Document.xml", doc_xml)
+    z.write(brep, "Suporte.Shape.brp")
+os.remove(brep)
