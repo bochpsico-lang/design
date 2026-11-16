@@ -1,0 +1,62 @@
+# Macro FreeCAD - Suporte em chapa (bandeja dobrada, cantos abertos)
+# Aco 1020 galvanizado, t = 2 mm. Uso: Macro > Macros... > selecionar este arquivo > Executar
+# (ou copiar e colar no Console Python: Exibir > Paineis > Console Python)
+import FreeCAD as App
+import Part
+from FreeCAD import Vector as V
+
+L, W, H = 160.0, 54.0, 15.0       # dimensoes externas
+T = 2.0                           # espessura
+R_EXT = 2.74                      # raio externo da dobra
+R_INT = R_EXT - T                 # 0.74
+GAP_X0, GAP_X1 = 60.0, 100.0      # abertura frontal (40 mm)
+HOLE_D, HOLE_Z = 5.0, 7.5
+HOLES_X = [30.0, 45.0, 115.0, 130.0]
+
+
+def flange(length):
+    """Aba local: ao longo de +X, para fora em +Y, tangente com o fundo em y=0."""
+    c = V(0, 0, R_EXT)
+    ring = Part.makeCylinder(R_EXT, length, c, V(1, 0, 0)).cut(
+        Part.makeCylinder(R_INT, length, c, V(1, 0, 0)))
+    bend = ring.common(Part.makeBox(length, R_EXT, R_EXT))
+    wall = Part.makeBox(length, T, H - R_EXT, V(0, R_INT, R_EXT))
+    return bend.fuse(wall)
+
+
+def placed(shape, angle, pos):
+    s = shape.copy()
+    s.rotate(V(0, 0, 0), V(0, 0, 1), angle)
+    s.translate(pos)
+    return s
+
+
+BL, BW = L - 2 * R_EXT, W - 2 * R_EXT
+base = Part.makeBox(BL, BW, T, V(R_EXT, R_EXT, 0))
+parts = [
+    placed(flange(BL), 0, V(R_EXT, W - R_EXT, 0)),      # traseira
+    placed(flange(BL), 180, V(L - R_EXT, R_EXT, 0)),    # frente
+    placed(flange(BW), 90, V(R_EXT, R_EXT, 0)),         # lateral esq.
+    placed(flange(BW), -90, V(L - R_EXT, W - R_EXT, 0)),  # lateral dir.
+]
+shape = base.fuse(parts)
+
+# abertura de 40 mm na parede frontal (fundo inteiro)
+shape = shape.cut(Part.makeBox(GAP_X1 - GAP_X0, T + 1, H, V(GAP_X0, -1, R_EXT)))
+# 4 furos de 5 mm na parede frontal
+for x in HOLES_X:
+    shape = shape.cut(Part.makeCylinder(HOLE_D / 2, T + 2, V(x, -1, HOLE_Z), V(0, 1, 0)))
+shape = shape.removeSplitter()
+
+doc = App.ActiveDocument or App.newDocument("Suporte")
+obj = doc.addObject("Part::Feature", "Suporte")
+obj.Shape = shape
+doc.recompute()
+print("Suporte: volume %.1f mm3, massa %.1f g, valido=%s"
+      % (shape.Volume, shape.Volume * 7.87e-3, shape.isValid()))
+try:
+    import FreeCADGui as Gui
+    Gui.ActiveDocument.ActiveView.viewIsometric()
+    Gui.SendMsgToActiveView("ViewFit")
+except Exception:
+    pass
