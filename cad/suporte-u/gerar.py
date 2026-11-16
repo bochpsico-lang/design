@@ -28,12 +28,19 @@ HOLES_X = [30.0, 45.0, 115.0, 130.0]
 K = 0.33                         # fator K (ajustar ao ferramental)
 
 # ---------------- 3D ----------------
-outer = cq.Workplane("XY").center(L/2, W/2).rect(L, W).extrude(H).edges("|Z").fillet(R_EXT)
-# bandeja: fundo de chapa t=2 + paredes; dobras fundo/parede com R externo 2,74 / interno 0,74
-outer = outer.faces("<Z").edges().fillet(R_EXT - 0.01)
-inner = (cq.Workplane("XY").workplane(offset=T).center(L/2, W/2).rect(L-2*T, W-2*T)
-         .extrude(H).edges("|Z").fillet(R_INT).faces("<Z").edges().fillet(R_INT - 0.01))
-part = outer.cut(inner)
+# Bandeja dobrada: fundo + 4 abas dobradas a 90 graus, cantos abertos (alivio).
+def flange(length):
+    """Aba em coordenadas locais: ao longo de +X, para fora em +Y, tangente do fundo em y=0."""
+    c = (cq.Workplane("YZ").center(0, R_EXT).circle(R_EXT).circle(R_INT).extrude(length)
+         .intersect(cq.Workplane("XY").box(length, R_EXT, R_EXT, centered=False)))
+    wall = cq.Workplane("XY").box(length, T, H - R_EXT, centered=False).translate((0, R_INT, R_EXT))
+    return c.union(wall)
+BL_, BW_ = L - 2*R_EXT, W - 2*R_EXT
+part = cq.Workplane("XY").box(BL_, BW_, T, centered=False).translate((R_EXT, R_EXT, 0))
+part = part.union(flange(BL_).translate((R_EXT, W - R_EXT, 0)))                               # fundo (traseira)
+part = part.union(flange(BL_).rotate((0,0,0), (0,0,1), 180).translate((L - R_EXT, R_EXT, 0)))  # frente
+part = part.union(flange(BW_).rotate((0,0,0), (0,0,1), 90).translate((R_EXT, R_EXT, 0)))       # lateral esq.
+part = part.union(flange(BW_).rotate((0,0,0), (0,0,1), -90).translate((L - R_EXT, W - R_EXT, 0)))  # lateral dir.
 # abertura de 40 mm so na parede frontal (o fundo continua inteiro)
 part = part.cut(cq.Workplane("XY").box(GAP_X1-GAP_X0, T+1, H, centered=False)
                 .translate((GAP_X0, -1, R_EXT)))
@@ -140,6 +147,7 @@ SX = FX + L + 35
 place(side, SX, FY)
 vdim((SX+W, FY), (SX+W, FY+H), SX+W+8)
 hdim((SX, FY+H), (SX+W, FY+H), YD)
+msp.add_radius_dim(center=(FX+L-R_EXT, FY+R_EXT), radius=R_EXT, angle=315, text="4x R2,74 (dobras)", **DIM).render()
 text("VISTA LATERAL ESQ.", SX+W/2, FY-7, 3.5)
 
 # --- Vista superior (abaixo da frontal; frente da peca voltada para cima)
@@ -152,7 +160,6 @@ hdim((TX+GAP_X1, YF), (TX+L, YF), YF+9)
 hdim((TX, TY), (TX+L, TY), TY-10)
 vdim((TX+L, TY), (TX+L, YF), TX+L+10)
 vdim((TX+GAP_X1+12, YF-T), (TX+GAP_X1+12, YF), TX+GAP_X1+12, text="2,00 ±0,30")
-msp.add_radius_dim(center=(TX+R_EXT, YF-R_EXT), radius=R_EXT, angle=135, text="4x R2,74", **DIM).render()
 text("VISTA SUPERIOR", TX+L/2, TY-18, 3.5)
 
 # --- Isometrica
@@ -195,8 +202,8 @@ hdim((g1, YT), (fx(115), hy), YT+7)
 hdim((fx(115), hy), (fx(130), hy), YT+7)
 hdim((fx(130), hy), (PX+F+BL, YT), YT+7)
 text(f"PLANIFICACAO - blank {fmt(Lb)} x {fmt(Wb)} | 4 dobras 90° p/ cima | Ri {fmt(R_INT)} | K {K} (ajustar)",
-     PX+Lb+12, PY+Wb/2+6, 2.6, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
-text(f"Cantos com alivio {fmt(F)} x {fmt(F)}", PX+Lb+12, PY+Wb/2-1, 2.6,
+     PX+Lb+12, PY+Wb/2+14, 2.6, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
+text(f"Cantos abertos - alivio {fmt(F)} x {fmt(F)}", PX+Lb+12, PY+Wb/2+7, 2.6,
      align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
 flat_len = Lb
 # --- Legenda
@@ -206,7 +213,7 @@ for yy in (BY+10, BY+20, BY+30, BY+40):
     msp.add_line((BX, yy), (410, yy), dxfattribs={"layer":"MOLDURA"})
 rows = ["SUPORTE EM CHAPA - BANDEJA", "Material: Aco SAE 1020 Galvanizado  t = 2,00 mm",
         "Quantidade: 500 pecas", "Escala 1:1   Folha A3   Unid.: mm   1o diedro",
-        "Tol. ISO 2768-m   Ri dobra 0,74   Massa ~207 g"]
+        "Tol. ISO 2768-m   Ri dobra 0,74   Massa ~205 g"]
 for i, r in enumerate(rows):
     text(r, BX+3, BY+45-10*i, 4.0 if i == 0 else 2.8, align=ezdxf.enums.TextEntityAlignment.MIDDLE_LEFT)
 
